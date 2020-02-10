@@ -1,0 +1,216 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<unload unload_date="2020-02-10 03:49:57">
+<sys_script_include action="INSERT_OR_UPDATE">
+<access>package_private</access>
+<active>true</active>
+<api_name>global.upsertIncident</api_name>
+<caller_access/>
+<client_callable>false</client_callable>
+<description> This script include will contain JS funtions to  Accepts REST formatted request payload, does reqest logging Creates and Updates record in incident table by SCS</description>
+<name>upsertIncident</name>
+<script><![CDATA[/******************************************************************************
+Script Include Name: upsertIncident
+Created By: Enable Professional Services.
+Summary: Accepts REST formatted request payload, doees reqest logging
+Creates and Updates record in incident table.....Integration to Sydney Catholic Schools - ServiceNow
+Tables Involved: incident
+**********************************************************************************/
+
+
+
+
+var upsertIncident = Class.create();
+upsertIncident.prototype = {
+    initialize: function() {},
+
+
+    createIncident: function(req) {
+
+        this.u_externalid = req.externalid;
+        this.short_description = req.short_description;
+        this.description = req.description;
+        this.u_customer = req.customer;
+        this.u_email = req.email;
+        this.u_department = req.department;
+        this.u_city = req.city;
+        // this.cmdb_ci = req.cmdb_ci;
+        this.service = req.service;
+        this.incident_state = req.incident_state;
+        this.impact = req.impact;
+        this.urgency = req.urgency;
+        this.priority = req.priority;
+        //this.assignment_group = req.assignment_group;
+        this.comments = req.comments;
+        this.work_notes = req.work_notes;
+
+        var scsgrp = gs.getPropertyty('SCS Group'); //SCS Service 
+        var mtxgrp = gs.getPropertyty('Matrix Group'); // ICT Groups 
+
+        //Inserting new record in sys_user table
+        var inc = new GlideRecord('incident');
+        inc.initialize();
+        inc.setValue('u_externalid', this.u_externalid);
+        inc.setValue('short_description', this.short_description);
+        inc.setValue('description', this.description);
+        inc.setValue('u_customer', this.u_customer);
+        inc.setValue('u_email', this.u_email);
+        inc.setValue('u_department', this.u_department);
+        inc.setValue('u_city', this.u_city);
+        //inc.setValue('cmdb_ci', this.cmdb_ci);
+        inc.setDisplayValue('business_service', this.service);
+        //inc.setValue('incident_state', this.incident_state);
+        inc.setValue('impact', this.impact);
+        inc.setValue('urgency', this.urgency);
+        inc.setValue('priority', this.priority);
+        inc.setValue('category', 'network');
+        inc.setDisplayValue('assignment_group', 'SCS Service Desk');
+        inc.setDisplayValue('caller_id', 'Sydney Catholic Schools');
+        inc.setDisplayValue('opened_by', 'Sydney Catholic Schools');
+        inc.comments.setJournalEntry(this.comments);
+        inc.work_notes.setJournalEntry(this.work_notes);
+        inc.insert();
+        return inc.number;
+
+    },
+
+    updateIncident: function(req) {
+        // gs.log('MatrxiCNI: Log 3--> The INBOUND update Incident function has been called' + JSON.stringify('jsonpayload'));
+        this.u_externalid = req.externalid;
+        //this.cmdb_ci = req.cmdb_ci;
+        this.status = req.incident_state;
+        this.impact = req.impact;
+        this.urgency = req.urgency;
+        this.priority = req.priority;
+        // this.assignment_group = req.assignment_group;
+        this.comments = req.comments;
+        this.work_notes = req.work_notes;
+        this.service = req.service;
+        this.close_notes=req.close_notes;    
+
+        var scsgrp = gs.getPropertyty('SCS Group'); //SCS Service Desk
+        var mtxgrp = gs.getPropertyty('Matrix Group'); // ICT Groups 
+
+        //Inserting new record in sys_user table
+        var incGR = new GlideRecord('incident');
+        incGR.addActiveQuery();
+        incGR.addQuery('u_externalid', this.u_externalid);
+        incGR.query();
+        if (incGR.next()) {
+            //incGR.setValue('cmdb_ci', this.cmdb_ci);
+            incGR.setValue('incident_state', this.status);
+            incGR.setValue('impact', this.impact);
+            incGR.setValue('urgency', this.urgency);
+            incGR.setValue('priority', this.priority);
+            incGR.setDisplayValue('business_service', this.service);
+            incGR.comments.setJournalEntry(this.comments);
+            incGR.work_notes.setJournalEntry(this.work_notes);
+            var x1 = incGR.assignment_group;
+            //  gs.log('MatrxiCNI: Log 3-->assignment group' + x1);
+            if (x1 == mtxgrp) {
+                incGR.setValue('assignment_group', mtxgrp);
+            }
+			incGR.close_notes.setValue('close_notes', this.close_notes);
+            incGR.update();
+            return incGR.number;
+        }
+
+    },
+
+
+
+    updateOutboundIncident: function(req) {
+        var jsonpayload2 = {};
+        var incState = req.incident_state;
+        var sub_state;
+        var x = req.assignment_group.getDisplayValue();
+        var scsgrp = gs.getPropertyty('SCS Group'); //SCS Service Desk
+        var mtxgrp = gs.getPropertyty('Matrix Group'); // ICT Groups 
+
+
+        jsonpayload2.externalid = req.number.toString();
+        jsonpayload2.impact = req.impact.toString();
+        jsonpayload2.urgency = req.urgency.toString();
+        jsonpayload2.priority = req.priority.toString();
+		jsonpayload2.close_notes = req.close_notes.toString();
+        jsonpayload2.comments = req.comments.getJournalEntry(1).toString();
+        jsonpayload2.service = req.business_service.getDisplayValue();
+        if (x == 'ICT Systems') {
+            jsonpayload2.assignment_group = x;
+        }
+
+        if (incState == 2) { // Active = 2
+            jsonpayload2.incident_state = "2";
+            // gs.log('MatrixCNI: Log 111--> In Progress Status -> ' + incState);
+        } else if (incState == 3) {
+            jsonpayload2.incident_state = "3"; // On Hold Reason 4 =  awaiting problem
+            jsonpayload2.sub_state = "3";
+
+        } else if (incState == 4) { // On Hold Reason 1 = Awaiting user info 
+            jsonpayload2.incident_state = "3";
+            jsonpayload2.sub_state = "1";
+
+        } else if (incState == -210) { // On Hold Reason 4 = Awaiting Vendor
+            jsonpayload2.incident_state = "3";
+            jsonpayload2.sub_state = "4";
+        } else if (incState == -220) { // On Hold Reason 4 = Pending Site Visit awaiting problem
+            jsonpayload2.incident_state = "3";
+            jsonpayload2.sub_state = "7";
+        } else {
+            jsonpayload2.incident_state = req.state.toString();
+            // gs.log('MatrixCNI: Log 333--> other Status values -> ' + incState);
+        }
+
+
+
+        //the rest message is called for Matrix Incident outbound with the udpate (PUT) method
+        var restOutbound2 = new sn_ws.RESTMessageV2('IncidentOutboundSCS', 'UpdateSCSIncident');
+        restOutbound2.setRequestBody(JSON.stringify(jsonpayload2));
+        restOutbound2.execute();
+        this.logRequest(jsonpayload2);
+
+        /* use the commented text if you want to update any fields on receiving response from the matrix for above request
+		var response2 = restOutbound2.execute();
+        var responseBody2 = JSON.parse(response2.getBody());
+        gs.log('MatrixCNI: Log 2--> The whole response from MCNI --> ' + response2.getBody());
+        var httpStatus = response2.getStatusCode();
+        // use "responseBody2.result" to fetch values from the response received
+        var extID = responseBody.result.number;
+        req.u_external_id = extID;
+        req.update();*/
+
+        // gs.log('MatrixCNI: Log 6--> Can it reach this point after calling the REST Message function ' + JSON.stringify(restOutbound2));
+
+    },
+
+
+
+    //Function to insert request payload in Log table
+    logRequest: function(reqBody) {
+        var reqPayload1 = JSON.stringify(reqBody);
+        var log = new GlideRecord('syslog');
+        log.initialize();
+        log.setValue('level', '0');
+        log.setValue('source', 'Sydney cathloic Church');
+        log.setValue('message', 'This is payload Request Recived from SCS incident:  ' + reqBody.externalid + '\n' + 'Payload Detail:--> ' + reqPayload1);
+        log.insert();
+    },
+
+
+    type: 'upsertIncident'
+};]]></script>
+<sys_class_name>sys_script_include</sys_class_name>
+<sys_created_by>remote.services</sys_created_by>
+<sys_created_on>2020-01-22 05:05:51</sys_created_on>
+<sys_customer_update>false</sys_customer_update>
+<sys_id>16ef24b8db6600109cff187344961999</sys_id>
+<sys_mod_count>40</sys_mod_count>
+<sys_name>upsertIncident</sys_name>
+<sys_package display_value="Global" source="global">global</sys_package>
+<sys_policy/>
+<sys_replace_on_upgrade>false</sys_replace_on_upgrade>
+<sys_scope display_value="Global">global</sys_scope>
+<sys_update_name>sys_script_include_16ef24b8db6600109cff187344961999</sys_update_name>
+<sys_updated_by>remote.services</sys_updated_by>
+<sys_updated_on>2020-02-05 05:47:33</sys_updated_on>
+</sys_script_include>
+</unload>
